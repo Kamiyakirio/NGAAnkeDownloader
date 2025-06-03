@@ -84,7 +84,8 @@ def first_work(tid: str):
                 ].previous.attrs["id"],
             ).group(1)
 
-            post_time = i.find("span", attrs={"id": re.compile(r"^postdate")}).text
+            post_time = i.find(
+                "span", attrs={"id": re.compile(r"^postdate")}).text
             last_post_time = post_time
 
             joined_content = ""
@@ -113,7 +114,8 @@ def first_work(tid: str):
         f.write("\n\n------\n\n".join(results))
     print(f"Last update time of post {tid}: {last_post_time}")
     with open(os.path.join(os.getcwd(), "data", tid), "wb") as f:
-        pickle.dump(datetime.datetime.strptime(last_post_time, "%Y-%m-%d %H:%M"), f)
+        pickle.dump(datetime.datetime.strptime(
+            last_post_time, "%Y-%m-%d %H:%M"), f)
     print("Done!")
 
 
@@ -190,7 +192,8 @@ def regain_work(tid: str):
                 ].previous.attrs["id"],
             ).group(1)
 
-            post_time = i.find("span", attrs={"id": re.compile(r"^postdate")}).text
+            post_time = i.find(
+                "span", attrs={"id": re.compile(r"^postdate")}).text
             if datetime.datetime.strptime(
                 post_time, "%Y-%m-%d %H:%M"
             ) <= datetime.datetime.strptime(last_post_time, "%Y-%m-%d %H:%M"):
@@ -234,7 +237,8 @@ def regain_work(tid: str):
         f.write("\n\n------\n\n".join(reversed(results)))
     print(f"Last update time of post {tid}: {last_post_time}")
     with open(os.path.join(os.getcwd(), "data", tid), "wb") as f:
-        pickle.dump(datetime.datetime.strptime(last_post_time, "%Y-%m-%d %H:%M"), f)
+        pickle.dump(datetime.datetime.strptime(
+            last_post_time, "%Y-%m-%d %H:%M"), f)
     print("Done!")
 
 
