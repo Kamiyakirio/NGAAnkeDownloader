@@ -1,7 +1,7 @@
 import requests
 import sys
 
-from default_http_headers import default_http_headers
+from tools.default_http_headers import default_http_headers
 
 
 def init_session():

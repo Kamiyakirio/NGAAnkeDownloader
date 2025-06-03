@@ -1,4 +1,5 @@
 import re
+import os
 
 
 def sanitize_filename(filename: str, replacement: str = "_") -> str:
@@ -34,3 +35,8 @@ def sanitize_filename(filename: str, replacement: str = "_") -> str:
         cleaned = "_" + cleaned
 
     return cleaned
+
+
+def check_folders():
+    if not os.path.exists(os.path.join(os.getcwd(), "data")):
+        os.makedirs(os.path.join(os.getcwd(), "data"))

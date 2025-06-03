@@ -1,5 +1,5 @@
 import re
-from ubbrand import replace_dice_tags
+from tools.ubbrand import replace_dice_tags
 
 
 def nga_content_convert_to_markdown(
