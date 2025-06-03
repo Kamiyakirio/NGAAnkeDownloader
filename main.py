@@ -19,7 +19,9 @@ def get_author_info(session: requests.Session, tid: str) -> Tuple[str, str]:
     """获取作者信息和帖子标题"""
     response = session.get(f"https://bbs.nga.cn/read.php?tid={tid}")
     if response.status_code != 200 or "msgcodestart" in response.text:
-        print("""访问失败，请检查:\n  1. cookie是否失效\n  2. tid是否合法\n  3. 目前只支持查看ff14板的帖子""")
+        print(
+            """访问失败，请检查:\n  1. cookie是否失效\n  2. tid是否合法\n  3. 目前只支持查看ff14板的帖子"""
+        )
         sys.exit(0)
 
     soup = BeautifulSoup(response.text, "lxml")
@@ -30,7 +32,9 @@ def get_author_info(session: requests.Session, tid: str) -> Tuple[str, str]:
     return author_uid, title
 
 
-def get_max_page(session: requests.Session, tid: str, target_uid: Optional[str] = None) -> int:
+def get_max_page(
+    session: requests.Session, tid: str, target_uid: Optional[str] = None
+) -> int:
     """获取最大页数"""
     params = {"tid": tid, "page": 114514}
     if target_uid and target_uid != "all":
@@ -48,12 +52,15 @@ def get_max_page(session: requests.Session, tid: str, target_uid: Optional[str] 
     return maxpage
 
 
-def parse_post_content(post_content: bs4.element.Tag, post_uid: str, tid: str, pid: str) -> str:
+def parse_post_content(
+    post_content: bs4.element.Tag, post_uid: str, tid: str, pid: str
+) -> str:
     """解析帖子内容"""
     joined_content = ""
+
     for s in post_content.contents:
         if isinstance(s, bs4.element.NavigableString):
-            joined_content += str(s)
+            joined_content += str(s).replace("*", "\*").replace("_", "\_")
         elif s.name == "br":
             joined_content += "\n"
 
@@ -62,7 +69,9 @@ def parse_post_content(post_content: bs4.element.Tag, post_uid: str, tid: str, p
     )
 
 
-def crawl_page(session: requests.Session, tid: str, target_uid: Optional[str], page: int) -> List[Tuple[str, str, str]]:
+def crawl_page(
+    session: requests.Session, tid: str, target_uid: Optional[str], page: int
+) -> List[Tuple[str, str, str]]:
     """爬取单页内容"""
     params = {"tid": tid}
     if target_uid and target_uid != "all":
@@ -84,6 +93,7 @@ def crawl_page(session: requests.Session, tid: str, target_uid: Optional[str], p
                 "class": "postcontent ubbcode",
             }
         )
+
         post_uid = "-1"
         match_postuid = re.search(
             r"uid=(\d+)", i.find(attrs={"class": "author b"}).attrs["href"]
@@ -96,9 +106,9 @@ def crawl_page(session: requests.Session, tid: str, target_uid: Optional[str], p
 
         pid = re.search(
             r"pid(\d+)Anchor",
-            i.find_all("a", attrs={"name": re.compile(r"^l\d+$")})[
-                0
-            ].previous.attrs["id"],
+            i.find_all("a", attrs={"name": re.compile(r"^l\d+$")})[0].previous.attrs[
+                "id"
+            ],
         ).group(1)
 
         post_time = i.find("span", attrs={"id": re.compile(r"^postdate")}).text
@@ -113,7 +123,14 @@ def crawl_page(session: requests.Session, tid: str, target_uid: Optional[str], p
     return results
 
 
-def save_results(title: str, results: List[str], tid: str, last_post_time: str, target_uid: str, mode: str = "w"):
+def save_results(
+    title: str,
+    results: List[str],
+    tid: str,
+    last_post_time: str,
+    target_uid: str,
+    mode: str = "w",
+):
     """保存结果到文件"""
     print("Saving files...")
     with open(
@@ -123,9 +140,12 @@ def save_results(title: str, results: List[str], tid: str, last_post_time: str, 
     ) as f:
         f.write("\n\n------\n\n".join(results))
     print(f"Last update time of post {tid}: {last_post_time}")
+    print("")
     with open(os.path.join(os.getcwd(), "data", tid), "wb") as f:
-        pickle.dump((datetime.datetime.strptime(
-            last_post_time, "%Y-%m-%d %H:%M"), target_uid), f)
+        pickle.dump(
+            (datetime.datetime.strptime(last_post_time, "%Y-%m-%d %H:%M"), target_uid),
+            f,
+        )
     print("Done!")
 
 
@@ -145,8 +165,13 @@ def first_work(tid: str, target_uid: Optional[str] = None):
         all_results.extend([content for _, content, _ in page_results])
         time.sleep(random.uniform(1.0, 2.0))
 
-    save_results(title, all_results, tid,
-                 page_results[-1][0] if page_results else "1970-01-01 08:00", target_uid)
+    save_results(
+        title,
+        all_results,
+        tid,
+        page_results[-1][0] if page_results else "1970-01-01 08:00",
+        target_uid,
+    )
 
 
 def regain_work(tid: str, target_uid: Optional[str] = None):
@@ -164,7 +189,8 @@ def regain_work(tid: str, target_uid: Optional[str] = None):
 
     if saved_target_uid != target_uid:
         print(
-            f"Warning: current input uid ({target_uid}) is different from the saved uid ({saved_target_uid}) and we need to get all contents again.")
+            f"Warning: current input uid ({target_uid}) is different from the saved uid ({saved_target_uid}) and we need to get all contents again."
+        )
         print("Do continue? (y/n)")
         if input() == "y":
             first_work(tid, target_uid)
@@ -203,8 +229,9 @@ def regain_work(tid: str, target_uid: Optional[str] = None):
         print("Not detecting any updates, program will exit.")
         sys.exit(0)
 
-    save_results(title, list(reversed(all_results)),
-                 tid, last_post_time, target_uid, "a")
+    save_results(
+        title, list(reversed(all_results)), tid, last_post_time, target_uid, "a"
+    )
 
 
 def main():
@@ -213,7 +240,8 @@ def main():
     target_uid = "PLACEHOLDER"
     while not check_user_type_uid(target_uid):
         target_uid = input(
-            "Enter target uid (press Enter for author, 'all' for all replies): ").strip()
+            "Enter target uid (press Enter for author, 'all' for all replies): "
+        ).strip()
     if not target_uid:
         target_uid = None
     if not os.path.exists(os.path.join(os.getcwd(), "data", tid)):
