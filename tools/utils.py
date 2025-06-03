@@ -40,3 +40,21 @@ def sanitize_filename(filename: str, replacement: str = "_") -> str:
 def check_folders():
     if not os.path.exists(os.path.join(os.getcwd(), "data")):
         os.makedirs(os.path.join(os.getcwd(), "data"))
+
+
+def check_user_type_uid(uid: str) -> bool:
+    """检查用户类型是否为uid"""
+    def is_int(s: str) -> bool:
+        try:
+            int(s)
+            return True
+        except ValueError:
+            return False
+    if not uid:
+        return True
+    elif is_int(uid):
+        return True
+    elif uid == "all":
+        return True
+    else:
+        return False

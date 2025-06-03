@@ -5,244 +5,210 @@ import time
 import datetime
 import pickle
 import os
+import sys
 from bs4 import BeautifulSoup
-
 import bs4.element
+from typing import List, Tuple, Optional
 
-from tools.content import nga_content_convert_to_markdown
+from tools.content import nga_content_convert_to_markdown, extract_user_info
 from tools.session import init_session
-from tools.utils import sanitize_filename, check_folders
+from tools.utils import sanitize_filename, check_folders, check_user_type_uid
 
 
-def first_work(tid: str):
-    session = init_session()
-
-    results = []
-
+def get_author_info(session: requests.Session, tid: str) -> Tuple[str, str]:
+    """获取作者信息和帖子标题"""
     response = session.get(f"https://bbs.nga.cn/read.php?tid={tid}")
     if response.status_code != 200 or "msgcodestart" in response.text:
-        print(
+        raise Exception(
             """访问失败，请检查:\n  1. cookie是否失效\n  2. tid是否合法\n  3. 目前只支持查看ff14板的帖子"""
         )
-        return
 
     soup = BeautifulSoup(response.text, "lxml")
     author_uid = re.search(
         r"uid=(\d+)", soup.find("a", attrs={"id": "postauthor0"}).attrs["href"]
     ).group(1)
     title = soup.find("h3", attrs={"id": "postsubject0"}).text
+    return author_uid, title
 
-    response = session.get(
-        f"https://bbs.nga.cn/read.php",
-        params={"tid": tid, "authorid": author_uid, "page": 114514},
-    )
+
+def get_max_page(session: requests.Session, tid: str, target_uid: Optional[str] = None) -> int:
+    """获取最大页数"""
+    params = {"tid": tid, "page": 114514}
+    if target_uid and target_uid != "all":
+        params["authorid"] = target_uid
+    response = session.get("https://bbs.nga.cn/read.php", params=params)
     soup = BeautifulSoup(response.text, "lxml")
     pagebtns = soup.find_all("a", attrs={"class": "pager_spacer"})
     maxpage = 1
-
-    last_post_time = "1970-01-01 08:00"
 
     if pagebtns:
         for i in pagebtns:
             if "上一页" in i.text:
                 maxpage = int(re.search(r"上一页\((\d+)\)", i.text).group(1)) + 1
                 break
+    return maxpage
 
-    print(f"Title: {title}")
-    print(f"Get {maxpage} pages of contents (author-only)")
 
-    for page in range(1, maxpage + 1):
-        params = {"tid": tid, "authorid": author_uid}
-        if page > 1:
-            params["page"] = page
-        print(f"Crawling page {page} of tid {tid}...")
+def parse_post_content(post_content: bs4.element.Tag, post_uid: str, tid: str, pid: str) -> str:
+    """解析帖子内容"""
+    joined_content = ""
+    for s in post_content.contents:
+        if isinstance(s, bs4.element.NavigableString):
+            joined_content += str(s)
+        elif s.name == "br":
+            joined_content += "\n"
 
-        response = session.get("https://bbs.nga.cn/read.php", params=params)
-        soup = BeautifulSoup(response.text, "lxml")
+    return nga_content_convert_to_markdown(
+        joined_content, int(post_uid), int(tid), int(pid)
+    )
 
-        items = soup.find_all("table", attrs={"class": "forumbox postbox"})
 
-        for i in items:
-            post_content = i.find(
-                attrs={
-                    "id": re.compile(r"^postcontent"),
-                    "class": "postcontent ubbcode",
-                }
-            )
-            post_uid = "-1"
-            match_postuid = re.search(
-                r"uid=(\d+)", i.find(attrs={"class": "author b"}).attrs["href"]
-            )
-            if match_postuid:
-                post_uid = match_postuid.group(1)
+def crawl_page(session: requests.Session, tid: str, target_uid: Optional[str], page: int) -> List[Tuple[str, str, str]]:
+    """爬取单页内容"""
+    params = {"tid": tid}
+    if target_uid and target_uid != "all":
+        params["authorid"] = target_uid
+    if page > 1:
+        params["page"] = page
+    print(f"Crawling page {page} of tid {tid}...")
 
-            pid = re.search(
-                r"pid(\d+)Anchor",
-                i.find_all("a", attrs={"name": re.compile(r"^l\d+$")})[
-                    0
-                ].previous.attrs["id"],
-            ).group(1)
+    response = session.get("https://bbs.nga.cn/read.php", params=params)
+    soup = BeautifulSoup(response.text, "lxml")
+    items = soup.find_all("table", attrs={"class": "forumbox postbox"})
+    userinfo_dict = extract_user_info(response.text)
+    results = []
 
-            post_time = i.find("span", attrs={"id": re.compile(r"^postdate")}).text
-            last_post_time = post_time
+    for i in items:
+        post_content = i.find(
+            attrs={
+                "id": re.compile(r"^postcontent"),
+                "class": "postcontent ubbcode",
+            }
+        )
+        post_uid = "-1"
+        match_postuid = re.search(
+            r"uid=(\d+)", i.find(attrs={"class": "author b"}).attrs["href"]
+        )
+        if match_postuid:
+            post_uid = match_postuid.group(1)
 
-            joined_content = ""
+        if target_uid and target_uid != "all" and post_uid != target_uid:
+            continue
 
-            for s in post_content.contents:
-                if isinstance(s, bs4.element.NavigableString):
-                    joined_content += str(s)
-                elif s.name == "br":
-                    joined_content += "\n"
+        pid = re.search(
+            r"pid(\d+)Anchor",
+            i.find_all("a", attrs={"name": re.compile(r"^l\d+$")})[
+                0
+            ].previous.attrs["id"],
+        ).group(1)
 
-            content_s = nga_content_convert_to_markdown(
-                joined_content, int(post_uid), int(tid), int(pid)
-            )
+        post_time = i.find("span", attrs={"id": re.compile(r"^postdate")}).text
+        content = parse_post_content(post_content, post_uid, tid, pid)
 
-            results.append(content_s)
+        # 如果是all模式，添加用户名
+        username = ""
+        if target_uid == "all" and post_uid in userinfo_dict:
+            username = f"【{userinfo_dict[post_uid]['username']}】\n"
 
-        time.sleep(random.uniform(1.0, 2.0))
-        page += 1
+        results.append((post_time, username + content, post_uid))
 
+    return results
+
+
+def save_results(title: str, results: List[str], tid: str, last_post_time: str, mode: str = "w"):
+    """保存结果到文件"""
     print("Saving files...")
     with open(
         os.path.join(os.getcwd(), "data", f"{sanitize_filename(title,'')}.md"),
-        "w",
+        mode,
         encoding="utf8",
     ) as f:
         f.write("\n\n------\n\n".join(results))
     print(f"Last update time of post {tid}: {last_post_time}")
     with open(os.path.join(os.getcwd(), "data", tid), "wb") as f:
-        pickle.dump(datetime.datetime.strptime(last_post_time, "%Y-%m-%d %H:%M"), f)
+        pickle.dump(datetime.datetime.strptime(
+            last_post_time, "%Y-%m-%d %H:%M"), f)
     print("Done!")
 
 
-def regain_work(tid: str):
+def first_work(tid: str, target_uid: Optional[str] = None):
     session = init_session()
+    author_uid, title = get_author_info(session, tid)
+    if not target_uid:
+        target_uid = author_uid
+    maxpage = get_max_page(session, tid, target_uid)
 
-    results = []
+    print(f"Title: {title}")
+    print(f"Get {maxpage} pages of contents")
 
-    response = session.get(f"https://bbs.nga.cn/read.php?tid={tid}")
-    if response.status_code != 200 or "msgcodestart" in response.text:
-        print(
-            """访问失败，请检查:\n  1. cookie是否失效\n  2. tid是否合法\n  3. 目前只支持查看ff14板的帖子"""
-        )
-        return
+    all_results = []
+    for page in range(1, maxpage + 1):
+        page_results = crawl_page(session, tid, target_uid, page)
+        all_results.extend([content for _, content, _ in page_results])
+        time.sleep(random.uniform(1.0, 2.0))
 
-    soup = BeautifulSoup(response.text, "lxml")
-    author_uid = re.search(
-        r"uid=(\d+)", soup.find("a", attrs={"id": "postauthor0"}).attrs["href"]
-    ).group(1)
-    title = soup.find("h3", attrs={"id": "postsubject0"}).text
+    save_results(title, all_results, tid,
+                 page_results[-1][0] if page_results else "1970-01-01 08:00")
 
-    response = session.get(
-        f"https://bbs.nga.cn/read.php",
-        params={"tid": tid, "authorid": author_uid, "page": 114514},
-    )
-    soup = BeautifulSoup(response.text, "lxml")
-    pagebtns = soup.find_all("a", attrs={"class": "pager_spacer"})
-    maxpage = 1
+
+def regain_work(tid: str, target_uid: Optional[str] = None):
+    session = init_session()
+    author_uid, title = get_author_info(session, tid)
+    if not target_uid:
+        target_uid = author_uid
+    maxpage = get_max_page(session, tid, target_uid)
 
     last_post_time = "1970-01-01 08:00"
     with open(os.path.join(os.getcwd(), "data", tid), "rb") as f:
         last_post_time = pickle.load(f).strftime("%Y-%m-%d %H:%M")
-    if pagebtns:
-        for i in pagebtns:
-            if "上一页" in i.text:
-                maxpage = int(re.search(r"上一页\((\d+)\)", i.text).group(1)) + 1
-                break
-
-    printed_update_message = False
 
     print(f"Title: {title}")
-    print(f"Get {maxpage} pages of contents (author-only)")
+    print(f"Get {maxpage} pages of contents")
+
+    all_results = []
+    printed_update_message = False
 
     for page in range(maxpage, 0, -1):
-        flag = False
-        params = {"tid": tid, "authorid": author_uid}
-        if page > 1:
-            params["page"] = page
-        print(f"Crawling page {page} of tid {tid}...")
+        page_results = crawl_page(session, tid, target_uid, page)
+        found_old_post = False
 
-        response = session.get("https://bbs.nga.cn/read.php", params=params)
-        soup = BeautifulSoup(response.text, "lxml")
-
-        items = soup.find_all("table", attrs={"class": "forumbox postbox"})
-
-        for i in items:
-            post_content = i.find(
-                attrs={
-                    "id": re.compile(r"^postcontent"),
-                    "class": "postcontent ubbcode",
-                }
-            )
-            post_uid = "-1"
-            match_postuid = re.search(
-                r"uid=(\d+)", i.find(attrs={"class": "author b"}).attrs["href"]
-            )
-            if match_postuid:
-                post_uid = match_postuid.group(1)
-
-            pid = re.search(
-                r"pid(\d+)Anchor",
-                i.find_all("a", attrs={"name": re.compile(r"^l\d+$")})[
-                    0
-                ].previous.attrs["id"],
-            ).group(1)
-
-            post_time = i.find("span", attrs={"id": re.compile(r"^postdate")}).text
+        for post_time, content, _ in page_results:
             if datetime.datetime.strptime(
                 post_time, "%Y-%m-%d %H:%M"
             ) <= datetime.datetime.strptime(last_post_time, "%Y-%m-%d %H:%M"):
-                flag = True
+                found_old_post = True
                 break
             else:
                 if not printed_update_message:
                     printed_update_message = True
                     print("Detected update from last save time!")
+                all_results.append(content)
 
-            joined_content = ""
-
-            for s in post_content.contents:
-                if isinstance(s, bs4.element.NavigableString):
-                    joined_content += str(s)
-                elif s.name == "br":
-                    joined_content += "\n"
-
-            content_s = nga_content_convert_to_markdown(
-                joined_content, int(post_uid), int(tid), int(pid)
-            )
-
-            results.append(content_s)
-
-        if flag:
+        if found_old_post:
             break
 
         time.sleep(random.uniform(1.0, 2.0))
-        page += 1
 
-    print("Saving files...")
-    with open(
-        os.path.join(os.getcwd(), "data", f"{sanitize_filename(title,'')}.md"),
-        "a",
-        encoding="utf8",
-    ) as f:
-        f.write("\n\n------\n\n".join(reversed(results)))
-    print(f"Last update time of post {tid}: {last_post_time}")
-    with open(os.path.join(os.getcwd(), "data", tid), "wb") as f:
-        pickle.dump(datetime.datetime.strptime(last_post_time, "%Y-%m-%d %H:%M"), f)
-    print("Done!")
+    if not printed_update_message:
+        print("Not detected updates, program will exit.")
+        sys.exit(0)
+
+    save_results(title, list(reversed(all_results)), tid, last_post_time, "a")
 
 
 def main():
     check_folders()
     tid = input("Enter tid: ")
-    # uid = input(
-    #     "Enter the uid of author (or the user you want); leave blank to automatically get the author's uid; enter 'all' to get everyone's reply."
-    # )
+    target_uid = "PLACEHOLDER"
+    while not check_user_type_uid(target_uid):
+        target_uid = input(
+            "Enter target uid (press Enter for author, 'all' for all replies): ").strip()
+    if not target_uid:
+        target_uid = None
     if not os.path.exists(os.path.join(os.getcwd(), "data", tid)):
-        first_work(tid)
+        first_work(tid, target_uid)
     else:
-        regain_work(tid)
+        regain_work(tid, target_uid)
 
 
 if __name__ == "__main__":
