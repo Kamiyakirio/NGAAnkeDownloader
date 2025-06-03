@@ -5,6 +5,7 @@ import time
 import datetime
 import pickle
 import os
+import sys
 from bs4 import BeautifulSoup
 
 import bs4.element
@@ -219,6 +220,10 @@ def regain_work(tid: str):
 
         time.sleep(random.uniform(1.0, 2.0))
         page += 1
+
+    if not printed_update_message:
+        print("Not detected updates, program will exit.")
+        sys.exit(0)
 
     print("Saving files...")
     with open(
