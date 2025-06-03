@@ -19,9 +19,8 @@ def get_author_info(session: requests.Session, tid: str) -> Tuple[str, str]:
     """获取作者信息和帖子标题"""
     response = session.get(f"https://bbs.nga.cn/read.php?tid={tid}")
     if response.status_code != 200 or "msgcodestart" in response.text:
-        raise Exception(
-            """访问失败，请检查:\n  1. cookie是否失效\n  2. tid是否合法\n  3. 目前只支持查看ff14板的帖子"""
-        )
+        print("""访问失败，请检查:\n  1. cookie是否失效\n  2. tid是否合法\n  3. 目前只支持查看ff14板的帖子""")
+        sys.exit(0)
 
     soup = BeautifulSoup(response.text, "lxml")
     author_uid = re.search(
@@ -105,7 +104,6 @@ def crawl_page(session: requests.Session, tid: str, target_uid: Optional[str], p
         post_time = i.find("span", attrs={"id": re.compile(r"^postdate")}).text
         content = parse_post_content(post_content, post_uid, tid, pid)
 
-        # 如果是all模式，添加用户名
         username = ""
         if target_uid == "all" and post_uid in userinfo_dict:
             username = f"【{userinfo_dict[post_uid]['username']}】\n"
@@ -115,7 +113,7 @@ def crawl_page(session: requests.Session, tid: str, target_uid: Optional[str], p
     return results
 
 
-def save_results(title: str, results: List[str], tid: str, last_post_time: str, mode: str = "w"):
+def save_results(title: str, results: List[str], tid: str, last_post_time: str, target_uid: str, mode: str = "w"):
     """保存结果到文件"""
     print("Saving files...")
     with open(
@@ -126,8 +124,8 @@ def save_results(title: str, results: List[str], tid: str, last_post_time: str, 
         f.write("\n\n------\n\n".join(results))
     print(f"Last update time of post {tid}: {last_post_time}")
     with open(os.path.join(os.getcwd(), "data", tid), "wb") as f:
-        pickle.dump(datetime.datetime.strptime(
-            last_post_time, "%Y-%m-%d %H:%M"), f)
+        pickle.dump((datetime.datetime.strptime(
+            last_post_time, "%Y-%m-%d %H:%M"), target_uid), f)
     print("Done!")
 
 
@@ -148,7 +146,7 @@ def first_work(tid: str, target_uid: Optional[str] = None):
         time.sleep(random.uniform(1.0, 2.0))
 
     save_results(title, all_results, tid,
-                 page_results[-1][0] if page_results else "1970-01-01 08:00")
+                 page_results[-1][0] if page_results else "1970-01-01 08:00", target_uid)
 
 
 def regain_work(tid: str, target_uid: Optional[str] = None):
@@ -159,8 +157,20 @@ def regain_work(tid: str, target_uid: Optional[str] = None):
     maxpage = get_max_page(session, tid, target_uid)
 
     last_post_time = "1970-01-01 08:00"
+    saved_target_uid = None
     with open(os.path.join(os.getcwd(), "data", tid), "rb") as f:
-        last_post_time = pickle.load(f).strftime("%Y-%m-%d %H:%M")
+        last_post_time, saved_target_uid = pickle.load(f)
+        last_post_time = last_post_time.strftime("%Y-%m-%d %H:%M")
+
+    if saved_target_uid != target_uid:
+        print(
+            f"Warning: current input uid ({target_uid}) is different from the saved uid ({saved_target_uid}) and we need to get all contents again.")
+        print("Do continue? (y/n)")
+        if input() == "y":
+            first_work(tid, target_uid)
+            return
+        else:
+            sys.exit(0)
 
     print(f"Title: {title}")
     print(f"Get {maxpage} pages of contents")
@@ -190,10 +200,11 @@ def regain_work(tid: str, target_uid: Optional[str] = None):
         time.sleep(random.uniform(1.0, 2.0))
 
     if not printed_update_message:
-        print("Not detected updates, program will exit.")
+        print("Not detecting any updates, program will exit.")
         sys.exit(0)
 
-    save_results(title, list(reversed(all_results)), tid, last_post_time, "a")
+    save_results(title, list(reversed(all_results)),
+                 tid, last_post_time, target_uid, "a")
 
 
 def main():
