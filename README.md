@@ -21,10 +21,10 @@ pip install -r requirements.txt
 或
 
 ```bash
-pip install beautifulsoup4 lxml
+pip install beautifulsoup4 lxml requests
 ```
 
-在程序目录下新建一个文件，命名为`cookies_file.txt`
+在程序目录下新建一个文件，命名为`cookie_file.txt`
 
 登录nga，使用浏览器开发者工具（F12）获得你的cookie，将你的cookie**完整地**复制到该文件中并保存
 

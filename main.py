@@ -22,6 +22,7 @@ def get_author_info(session: requests.Session, tid: str) -> Tuple[str, str]:
         print(
             """访问失败，请检查:\n  1. cookie是否失效\n  2. tid是否合法\n  3. 目前只支持查看ff14板的帖子"""
         )
+        # print(response.headers, "\n", response.request.headers)
         sys.exit(0)
 
     soup = BeautifulSoup(response.text, "lxml")
@@ -60,7 +61,10 @@ def parse_post_content(
 
     for s in post_content.contents:
         if isinstance(s, bs4.element.NavigableString):
-            joined_content += str(s).replace("*", "\*").replace("_", "\_")
+            s = str(s)
+            if s and set(s) == {"="}:
+                s = " " + s
+            joined_content += s.replace("*", "\*").replace("_", "\_")
         elif s.name == "br":
             joined_content += "\n"
 
@@ -81,6 +85,7 @@ def crawl_page(
     print(f"Crawling page {page} of tid {tid}...")
 
     response = session.get("https://bbs.nga.cn/read.php", params=params)
+    # print(response.request.headers)
     soup = BeautifulSoup(response.text, "lxml")
     items = soup.find_all("table", attrs={"class": "forumbox postbox"})
     userinfo_dict = extract_user_info(response.text)
@@ -140,7 +145,6 @@ def save_results(
     ) as f:
         f.write("\n\n------\n\n".join(results))
     print(f"Last update time of post {tid}: {last_post_time}")
-    print("")
     with open(os.path.join(os.getcwd(), "data", tid), "wb") as f:
         pickle.dump(
             (datetime.datetime.strptime(last_post_time, "%Y-%m-%d %H:%M"), target_uid),
@@ -161,6 +165,10 @@ def first_work(tid: str, target_uid: Optional[str] = None):
 
     all_results = []
     for page in range(1, maxpage + 1):
+        if page > 1:
+            session.headers["referer"] = (
+                f"https://bbs.nga.cn/read.php?tid={tid}&page={page-1}"
+            )
         page_results = crawl_page(session, tid, target_uid, page)
         all_results.extend([content for _, content, _ in page_results])
         time.sleep(random.uniform(1.0, 2.0))
@@ -191,7 +199,7 @@ def regain_work(tid: str, target_uid: Optional[str] = None):
         print(
             f"Warning: current input uid ({target_uid}) is different from the saved uid ({saved_target_uid}) and we need to get all contents again."
         )
-        print("Do continue? (y/n)")
+        print("Do continue? (y/n)  ", end="")
         if input() == "y":
             first_work(tid, target_uid)
             return
@@ -205,6 +213,10 @@ def regain_work(tid: str, target_uid: Optional[str] = None):
     printed_update_message = False
 
     for page in range(maxpage, 0, -1):
+        if page < maxpage:
+            session.headers["referer"] = (
+                f"https://bbs.nga.cn/read.php?tid={tid}&page={page+1}"
+            )
         page_results = crawl_page(session, tid, target_uid, page)
         found_old_post = False
 

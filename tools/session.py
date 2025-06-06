@@ -11,7 +11,11 @@ def init_session():
     try:
         with open("cookie_file.txt", "r") as f:
             ck = f.read().strip()
-            session.headers["cookie"] = ck
+            for item in ck.split(";"):
+                if "=" in item:
+                    key, value = item.strip().split("=", 1)
+                    session.cookies.set(key, value, domain="bbs.nga.cn")
+
     except:
         print("未找到cookie_file文件！将退出运行")
         sys.exit(1)
