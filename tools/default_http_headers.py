@@ -4,7 +4,6 @@ default_http_headers = {
     "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
     "Cache-Control": "no-cache",
     "Connection": "keep-alive",
-    "Cookie": "text",
     "Pragma": "no-cache",
     "Referer": "https://www.example.com",
     "Sec-CH-UA": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
