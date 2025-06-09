@@ -225,12 +225,12 @@ def regain_work(tid: str, target_uid: Optional[str] = None):
                 post_time, "%Y-%m-%d %H:%M"
             ) <= datetime.datetime.strptime(last_post_time, "%Y-%m-%d %H:%M"):
                 found_old_post = True
-                break
+                # break
             else:
                 if not printed_update_message:
                     printed_update_message = True
                     print("Detected update from last save time!")
-                all_results.append(content)
+                all_results.append(post_time + content)
 
         if found_old_post:
             break
@@ -241,8 +241,11 @@ def regain_work(tid: str, target_uid: Optional[str] = None):
         print("Not detecting any updates, program will exit.")
         sys.exit(0)
 
+    all_results.sort(
+        key=lambda foo: datetime.datetime.strptime(foo[:16], "%Y-%m-%d %H:%M")
+    )
     save_results(
-        title, list(reversed(all_results)), tid, last_post_time, target_uid, "a"
+        title, [_[16:] for _ in all_results], tid, last_post_time, target_uid, "a"
     )
 
 
